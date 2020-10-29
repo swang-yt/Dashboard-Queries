@@ -1,0 +1,59 @@
+-- This query finds the average propotion of Mtokens used to make dust. Also includes metrics like dust obtained, and total Mtokens gained.
+
+-- no cache
+with adg as (
+  select distinct
+    event_date,
+    user_id,
+    sum(quantity) as dust_gained
+  from opt.item_transactions
+  where item = 'loot_6'
+  and transaction_type = 'credit'
+  and event_date >= '2020-09-14'
+  and source like 'zone_market%'
+  and [am2_cheaters]
+  group by 1,2
+),
+
+amts as (
+  select distinct
+    event_date,
+    user_id,
+    sum(quantity) as mtokens_spent
+  from opt.item_transactions
+  where item = 'token_1'
+  and transaction_type = 'debit'
+  and event_date >= '2020-09-14'
+  and [am2_cheaters]
+  group by 1,2
+),
+
+cor_by_user as (
+  select 
+    b.user_id,
+    b.event_date,
+    case 
+      when a.dust_gained is null then 0
+      else a.dust_gained
+    end as dust_gained,
+    case 
+      when dust_gained is null then 0
+      else dust_gained*5 
+    end as mtokens_spent_on_dust,
+    b.mtokens_spent as total_mt_spent,
+    round((cast(mtokens_spent_on_dust as numeric))/(cast(total_mt_spent as numeric)),4) as prop_mt_spent_on_dust
+  from amts b
+  left join adg a on a.event_date = b.event_date
+  and a.user_id = b.user_id
+  order by 2
+  )
+
+select
+  event_date,
+  avg(dust_gained) as avg_dust_gained,
+  avg(mtokens_spent_on_dust) as avg_mt_for_dust,
+  avg(total_mt_spent) as avg_mt_spent,
+  [round(avg(prop_mt_spent_on_dust),4):%] as avg_prop_mt_for_dust
+from cor_by_user
+group by 1
+order by 1
